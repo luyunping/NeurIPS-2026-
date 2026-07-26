@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 figure1_reproduction.py
 =======================
@@ -55,11 +54,6 @@ from sklearn.linear_model import Lasso, LassoCV
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.model_selection import KFold
 
-
-# --------------------------------------------------------------------------
-# Walsh-Hadamard dictionary
-# --------------------------------------------------------------------------
-
 def subsets_upto(p, order):
     """Bitmask ids of subsets S of [p] with |S| <= order (None -> all 2^p)."""
     if order is None:
@@ -81,14 +75,14 @@ def slate_ids(T):
 
 def walsh_matrix(T, subsets):
     """Z_S(t) = prod_{l in S} t_l, for rows t of T and bitmask list `subsets`."""
-    B = (T < 0).astype(np.int64)                          # N x p, bit=1 where t=-1
-    SB = (subsets[:, None] >> np.arange(T.shape[1])) & 1  # d x p
-    return 1 - 2 * ((B @ SB.T) % 2)                       # N x d, entries +/-1
+    B = (T < 0).astype(np.int64)                         
+    SB = (subsets[:, None] >> np.arange(T.shape[1])) & 1 
+    return 1 - 2 * ((B @ SB.T) % 2)                       
 
 
-# --------------------------------------------------------------------------
+
 # Rooted configurations and the truncated rooted-graph distance (R = 1)
-# --------------------------------------------------------------------------
+
 
 def config_counts(A, T, n_slates):
     """Neighbor-slate count vector for each unit (marks = neighbors' slates).
@@ -125,9 +119,8 @@ def rooted_distances(C, deg, target):
     return 0.25 * delta1
 
 
-# --------------------------------------------------------------------------
 # Data-generating process (Appendix B / B.1)
-# --------------------------------------------------------------------------
+
 
 def dgp(N, p, avg_deg, sigma, c_het, seed, random_coefs=False, interf=1.0):
     """Generate one snapshot (Y, T, X, A) plus oracle quantities.
@@ -143,7 +136,7 @@ def dgp(N, p, avg_deg, sigma, c_het, seed, random_coefs=False, interf=1.0):
     """
     rng = np.random.default_rng(seed)
 
-    # Erdos-Renyi network, average degree avg_deg
+    
     U = rng.random((N, N))
     A = np.triu((U < avg_deg / (N - 1)).astype(float), 1)
     A = A + A.T
@@ -152,25 +145,25 @@ def dgp(N, p, avg_deg, sigma, c_het, seed, random_coefs=False, interf=1.0):
     T = rng.choice([-1.0, 1.0], size=(N, p))
 
     C, deg = config_counts(A, T, 2 ** p)
-    V = all_slates(p)                                     # slate value per id
+    V = all_slates(p)                                    
     with np.errstate(invalid="ignore", divide="ignore"):
         nb_mean = np.where(deg[:, None] > 0, (C @ V) / np.maximum(deg, 1)[:, None], 0.0)
-    frac_nb = ((nb_mean + 1.0) / 2.0).mean(1)             # mean treated fraction
+    frac_nb = ((nb_mean + 1.0) / 2.0).mean(1)             
 
-    # Target unit: median interference environment
+   
     target = int(np.argmin(np.abs(frac_nb - np.median(frac_nb))))
 
-    # Own-slate coefficients (sparse; coordinate 0 heterogeneous in g)
+ 
     if random_coefs:
         signs = rng.choice([-1.0, 1.0], size=3)
         a1, a2, a34 = signs * rng.uniform(0.4, 1.0, size=3)
         b1, b2 = rng.uniform(0.3, 0.8, size=2)
         gamma = rng.normal(0.0, 0.3, size=p)
     else:
-        a1, a2, a34 = 0.8, -0.6, 0.5                      # coords {1}, {2}, {3,4}
+        a1, a2, a34 = 0.8, -0.6, 0.5                      
         b1, b2 = 0.7, 0.4
         gamma = np.full(p, 0.3)
-    a0_g = c_het * (frac_nb - frac_nb[target])            # zero at the target
+    a0_g = c_het * (frac_nb - frac_nb[target])           
     own = a0_g * T[:, 0] + a1 * T[:, 1] + a2 * T[:, 2]
     support = [1 << 0, 1 << 1, 1 << 2]
     alpha_vals = [a0_g[target], a1, a2]
@@ -179,7 +172,7 @@ def dgp(N, p, avg_deg, sigma, c_het, seed, random_coefs=False, interf=1.0):
         support.append((1 << 3) | (1 << 4))
         alpha_vals.append(a34)
 
-    # First-order neighbor interference through the mean neighbor slate
+   
     if p >= 4:
         inter = interf * (b1 * nb_mean[:, 1] + b2 * nb_mean[:, 2] * nb_mean[:, 3])
     else:
@@ -189,15 +182,15 @@ def dgp(N, p, avg_deg, sigma, c_het, seed, random_coefs=False, interf=1.0):
     eps = rng.normal(0.0, sigma, N)
     Y = own + inter + mu_x + eps
 
-    # User-specified own-treatment contrast: flip coordinate 0, all else at -1
+    
     t0 = -np.ones(p)
     t1 = t0.copy(); t1[0] = 1.0
 
-    # Oracle quantities
-    mu_true = inter + mu_x                                # E[Y | G, X]
+   
+    mu_true = inter + mu_x                                
     support = np.array(support)
     alpha_target = np.array(alpha_vals)
-    theta_true = float(2.0 * a0_g[target])                # = 0 by construction
+    theta_true = float(2.0 * a0_g[target])                
 
     return dict(Y=Y, T=T, X=X, A=A, C=C, deg=deg, nb_mean=nb_mean,
                 target=target, t0=t0, t1=t1, mu_true=mu_true,
@@ -205,9 +198,9 @@ def dgp(N, p, avg_deg, sigma, c_het, seed, random_coefs=False, interf=1.0):
                 theta_true=theta_true)
 
 
-# --------------------------------------------------------------------------
+
 # Localization weights and nuisances
-# --------------------------------------------------------------------------
+
 
 def kernel_weights(d, bandwidth):
     """Epanechnikov kernel with FIXED bandwidth b_G on the d_R scale (Eq. 1).
@@ -247,9 +240,8 @@ def crossfit_m(Z, n_folds, seed):
     return m
 
 
-# --------------------------------------------------------------------------
 # Localized weighted Lasso and debiased inference (Eqs. 7, 9, 10, Thm 4)
-# --------------------------------------------------------------------------
+
 
 def fit_lasso(Zr, Yr, w, seed, c_lambda=1.5):
     """Weighted Lasso (Eq. 7) with the paper's theoretical penalty
@@ -265,10 +257,10 @@ def fit_lasso(Zr, Yr, w, seed, c_lambda=1.5):
                  tol=1e-3, random_state=seed)
     cv.fit(Zw, Yw)
     resid = Yw - Zw @ cv.coef_
-    sigma_hat = float(np.sqrt(np.sum(resid ** 2)))  # sum w_j r_j^2 ~ sigma^2
+    sigma_hat = float(np.sqrt(np.sum(resid ** 2)))  
 
     lam = c_lambda * sigma_hat * np.sqrt(np.log(d) / n_eff)
-    alpha_sk = lam / (2.0 * n)   # paper: min sum w r^2 + lam||b||_1
+    alpha_sk = lam / (2.0 * n)  
     m = Lasso(alpha=alpha_sk, fit_intercept=False, max_iter=20000, tol=1e-4)
     m.fit(Zw, Yw)
     return m.coef_
@@ -284,7 +276,6 @@ def debias_contrast(Zr, Yr, w, alpha, v, eta_mult=0.5):
     Sig = (Zr * w[:, None]).T @ Zr
     eta = eta_mult * np.sqrt(np.log(d) / n_eff)
 
-    # Eq. (9) as an LP:  min ||g||_1  s.t. ||Sig g - v||_inf <= eta
     A_ub = np.block([[Sig, np.zeros((d, d))],
                      [-Sig, np.zeros((d, d))],
                      [np.eye(d), -np.eye(d)],
@@ -324,7 +315,7 @@ def oracle_estimator(data, subsets, v, bandwidth):
     Y, T = data["Y"], data["T"]
     Z = walsh_matrix(T, subsets)
     Yr = Y - data["mu_true"]
-    Zr = Z - Z.mean(0)                                  # oracle m
+    Zr = Z - Z.mean(0)                                  
     d = rooted_distances(data["C"], data["deg"], data["target"])
     w = kernel_weights(d, bandwidth)
 
@@ -347,20 +338,20 @@ def baseline_estimator(data, subsets, v, n_folds, seed, c_lambda=1.5):
     """Graph-agnostic DR learner + simple network averaging (reconstruction)."""
     Y, T, X, A = data["Y"], data["T"], data["X"], data["A"]
     deg = np.maximum(data["deg"], 1)
-    Y_adj = Y - (A @ Y) / deg                             # network averaging
+    Y_adj = Y - (A @ Y) / deg                            
     Z = walsh_matrix(T, subsets)
-    mu = crossfit_mu(X, Y_adj, n_folds, seed)             # X only, no graph
+    mu = crossfit_mu(X, Y_adj, n_folds, seed)            
     m = crossfit_m(Z, n_folds, seed)
     Yr, Zr = Y_adj - mu, Z - m
 
-    w = np.full(len(Y), 1.0 / len(Y))                     # no localization
+    w = np.full(len(Y), 1.0 / len(Y))                    
     alpha = fit_lasso(Zr, Yr, w, seed, c_lambda=c_lambda)
     return debias_contrast(Zr, Yr, w, alpha, v)
 
 
-# --------------------------------------------------------------------------
+
 # Monte Carlo driver
-# --------------------------------------------------------------------------
+
 
 METHODS = ("oracle", "proposed", "baseline")
 
@@ -420,9 +411,9 @@ def summarize(records):
     return theta_true, rows
 
 
-# --------------------------------------------------------------------------
+
 # Figure rendering (merged from make_figure1.py)
-# --------------------------------------------------------------------------
+
 
 def render_figure(records_path, out_png, dpi=200):
     """Two-panel Figure-1-style plot from a *_records.csv file."""
@@ -445,7 +436,7 @@ def render_figure(records_path, out_png, dpi=200):
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.2),
                              gridspec_kw={"width_ratios": [1, 1.4]})
 
-    # left: estimation error and CI widths at the largest N
+
     ax = axes[0]
     ax.axhline(0.0, color="red", ls="--", lw=1.2, label="True value (0)")
     y_lo = y_hi = 0.0
@@ -477,8 +468,7 @@ def render_figure(records_path, out_png, dpi=200):
     ax.set_title(f"Point estimates and 95% CIs (N={N_star})")
     ax.legend(loc="best", fontsize=8)
 
-    # right: convergence RATE of the proposed estimator (log-log, with
-    # N^{-1/2} reference slope) -- cleaner than boxplots at few reps
+
     ax = axes[1]
     rmses, w95s = [], []
     for N in Ns:
@@ -493,7 +483,7 @@ def render_figure(records_path, out_png, dpi=200):
               label="RMSE of proposed estimator")
     ax.loglog(Ns_arr, np.array(w95s) / 3.92, "s--", color="#4C9F70",
               lw=1.4, ms=5, label="Std. dev. of proposed estimator")
-    # N^{-1/2} reference slope anchored at the first RMSE point
+   
     ref = rmses[0] * np.sqrt(Ns_arr[0] / Ns_arr)
     ax.loglog(Ns_arr, ref, ":", color="gray", lw=1.5,
               label=r"$N^{-1/2}$ reference slope")
