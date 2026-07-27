@@ -1,5 +1,4 @@
 """
-figure1_reproduction.py
 =======================
 Re-implementation of the synthetic experiment pipeline underlying Figure 1 and
 Appendix B.1 of "Individualized Causal Effects under Network Interference with
